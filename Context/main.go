@@ -3,11 +3,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
 )
 
+// without using context
 func placeOrderWithoutContext(orderID string) error {
 	log.Printf("Bắt đầu xử lý đơn hàng: %s\n", orderID)
 	// Giả sử: thời gian xử lý mất 3 giây (inventory, payment..)
@@ -53,6 +55,39 @@ func OrderHandlerSelect(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(2 * time.Second):
 		log.Printf("Xử lý đơn hàng %s quá 2 giây, trả lỗi về client \n", orderID)
 		http.Error(w, "Yêu cầu quá thời gian chờ, vui lòng thử lại sau", http.StatusGatewayTimeout) // 504 Gateway Timeout
+	}
+}
+
+func OrderHandlerWithContext(w http.ResponseWriter, r *http.Request) {
+	orderID := "GO-12345"
+
+	// Tạo context có timeout 2 giây
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	err := placeOrderWithContext(ctx, orderID)
+
+	if err != nil {
+		log.Printf("Xử lý đơn hàng %s thất bại: %v\n", orderID, err)
+		http.Error(w, "Lỗi xử lý đơn hàng quá thời gian", http.StatusGatewayTimeout)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Đặt hàng thành công!"))
+}
+
+// PlaceOrderContext
+func placeOrderWithContext(ctx context.Context, orderID string) error {
+	log.Printf("Bắt đầu xử lý đơn hàng: %s\n", orderID)
+
+	select {
+	case <-time.After(3 * time.Second): // giả lập xử lý mất 3 giây
+		log.Printf("Xử lý đơn hàng %s thành công!\n", orderID)
+		return nil
+	case <-ctx.Done(): // Nếu context bị huỷ
+		log.Printf("Huỷ xử lý đơn hàng %s: %v\n", orderID, ctx.Err())
+		return ctx.Err()
 	}
 }
 
